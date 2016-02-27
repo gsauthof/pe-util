@@ -218,6 +218,8 @@ parsed_pe *names_prime(const char *filePath, deque<string> &ns,
 
 static pair<deque<string>, bool> names(const char *filename)
 {
+  if (!boost::filesystem::exists(filename))
+    throw runtime_error("File doesn't exist: " + string(filename));
   deque<string> ns;
   bool is64 = false;
   auto p = names_prime(filename, ns, is64);
@@ -237,6 +239,7 @@ struct Arguments {
   bool include_main {false};
   deque<string> files;
   deque<string> search_path;
+  bool no_default_search_path {false};
   const array<const char*, 1> mingw64_search_path = {{
     "/usr/x86_64-w64-mingw32/sys-root/mingw/bin"
   }};
@@ -251,6 +254,7 @@ struct Arguments {
     "msvcrt.dll",
     "user32.dll"
   }};
+  bool no_default_whitelist {false};
 
   void parse(int argc, char **argv);
   void help(ostream &o, const char *argv0);
@@ -272,10 +276,14 @@ void Arguments::parse(int argc, char **argv)
       if (++i >= argc)
         throw runtime_error("path argument is missing");
       search_path.push_back(argv[i]);
+    } else if (!strcmp(a, "--no-path")) {
+      no_default_search_path = true;
     } else if (!strcmp(a, "-w") || !strcmp(a, "--wlist")) {
       if (++i >= argc)
         throw runtime_error("whitelist argument is missing");
-      whitelist.insert(argv[i]);
+      whitelist.insert(boost::to_lower_copy(string(argv[i])));
+    } else if (!strcmp(a, "--no-wlist")) {
+      no_default_whitelist = true;
     } else if (!strcmp(a, "-h") || !strcmp(a, "--help")) {
       help(cout, *argv);
       exit(0);
@@ -288,7 +296,7 @@ void Arguments::parse(int argc, char **argv)
       files.push_back(a);
     }
   }
-  if (whitelist.empty())
+  if (!no_default_whitelist)
     whitelist.insert(default_whitelist.begin(), default_whitelist.end());
 }
 void Arguments::help(ostream &o, const char *argv0)
@@ -301,7 +309,10 @@ void Arguments::help(ostream &o, const char *argv0)
        "  -t, --transitive  transitively list the dependencies, implies -r\n"
        "  -a, --all         imply -t,-r and include the input PEs\n"
        "  -p, --path        build custom search path\n"
-       "  -w  --wlist       whitelist a library name\n\n"
+       "      --no-path     don't include the default mingw64/-32 path\n"
+       "  -w  --wlist       whitelist a library name\n"
+       "      --no-wlist    don't populate the whitelist with defaults\n"
+       "\n"
        ;
 }
 
@@ -345,7 +356,7 @@ string Path_Cache::resolve(const deque<string> &search_path,
       continue;
     }
   }
-  throw runtime_error("Could not resovle: " + filename);
+  throw runtime_error("Could not resolve: " + filename);
 }
 
 class Traverser {
@@ -387,20 +398,18 @@ void Traverser::process_stack()
   while (!files.empty()) {
     auto t = files.top();
     files.pop();
-    deque<string> search_path;
+    deque<string> search_path(args.search_path);
     auto p = names(t.second.c_str());
     auto &ns = p.first;
     auto is64 = p.second;
-    if (args.search_path.empty()) {
+    if (!args.no_default_search_path) {
       if (is64)
-        search_path.insert(search_path.end(),
+        search_path.insert(search_path.begin(),
             args.mingw64_search_path.begin(), args.mingw64_search_path.end());
       else
-        search_path.insert(search_path.end(),
+        search_path.insert(search_path.begin(),
             args.mingw64_32_search_path.begin(),
             args.mingw64_32_search_path.end());
-    } else {
-      search_path = args.search_path;
     }
     for (auto &n : ns) {
       if (args.whitelist.count(boost::algorithm::to_lower_copy(n)))
