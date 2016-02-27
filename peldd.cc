@@ -247,12 +247,13 @@ struct Arguments {
     "/usr/i686-w64-mingw32/sys-root/mingw/bin"
   }};
   unordered_set<string> whitelist;
-  const array<const char*, 4> default_whitelist = {{
+  const array<const char*, 5> default_whitelist = {{
     // lower-case because windows is case insensitive ...
     "advapi32.dll",
     "kernel32.dll",
     "msvcrt.dll",
-    "user32.dll"
+    "user32.dll",
+    "ws2_32.dll"
   }};
   bool no_default_whitelist {false};
 
