@@ -13,7 +13,7 @@ and displays it shared object dependencies:
     $ cd build
     $ mingw64-cmake ..
     $ mingw64-make main
-    $ peldd main.exe
+    $ peldd main.exe -w ''
     ADVAPI32.dll
     libboost_filesystem-mt.dll
     libboost_system-mt.dll
@@ -25,12 +25,28 @@ and displays it shared object dependencies:
 
 Display the dependencies of a PE library:
 
-    $ peldd /usr/x86_64-w64-mingw32/sys-root/mingw/bin/libstdc++-6.dll       
+    $ peldd /usr/x86_64-w64-mingw32/sys-root/mingw/bin/libstdc++-6.dll -w
     libgcc_s_seh-1.dll
     KERNEL32.dll
     msvcrt.dll
     libwinpthread-1.dll
     USER32.dll
+
+Display the dependencies of a PE binary without any well-known
+system libraries:
+
+    $ peldd main.exe
+    libgcc_s_seh-1.dll
+    libstdc++-6.dll
+
+Compute the transitive closure of a binary, using the default
+search path:
+
+    $ peldd main.exe --all
+    main.exe
+    /usr/x86_64-w64-mingw32/sys-root/mingw/bin/libgcc_s_seh-1.dll
+    /usr/x86_64-w64-mingw32/sys-root/mingw/bin/libstdc++-6.dll
+    /usr/x86_64-w64-mingw32/sys-root/mingw/bin/libwinpthread-1.dll
 
 ## License
 

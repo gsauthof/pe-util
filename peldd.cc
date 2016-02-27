@@ -4,11 +4,21 @@
 #include <parser-library/parse.h>
 
 #include <iostream>
+#include <array>
+#include <unordered_map>
+#include <unordered_set>
+#include <set>
+#include <map>
+#include <stack>
 #include <deque>
 #include <list>
 #include <algorithm>
 #include <stdexcept>
 #include <stdlib.h>
+#include <string.h>
+
+#include <boost/filesystem.hpp>
+#include <boost/algorithm/string/case_conv.hpp>
 
 using namespace std;
 
@@ -63,7 +73,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
-parsed_pe *names_prime(const char *filePath, deque<string> &ns) {
+parsed_pe *names_prime(const char *filePath, deque<string> &ns,
+    bool &is64) {
   //first, create a new parsed_pe structure
   parsed_pe *p = new parsed_pe();
 
@@ -106,8 +117,11 @@ parsed_pe *names_prime(const char *filePath, deque<string> &ns) {
   data_directory importDir;
   if (p->peHeader.nt.OptionalMagic == NT_OPTIONAL_32_MAGIC) {
     importDir = p->peHeader.nt.OptionalHeader.DataDirectory[DIR_IMPORT];
+    // GS: also return this information
+    is64 = false;
   } else if (p->peHeader.nt.OptionalMagic == NT_OPTIONAL_64_MAGIC) {
     importDir = p->peHeader.nt.OptionalHeader64.DataDirectory[DIR_IMPORT];
+    is64 = true;
   } else {
     deleteBuffer(remaining);
     deleteBuffer(p->fileBuffer);
@@ -202,10 +216,11 @@ parsed_pe *names_prime(const char *filePath, deque<string> &ns) {
   return p;
 }
 
-static deque<string> names(const char *filename)
+static pair<deque<string>, bool> names(const char *filename)
 {
   deque<string> ns;
-  auto p = names_prime(filename, ns);
+  bool is64 = false;
+  auto p = names_prime(filename, ns, is64);
   if (!p)
     throw runtime_error("Error reading PE structure: " + err_loc);
   deleteBuffer(p->fileBuffer);
@@ -213,21 +228,209 @@ static deque<string> names(const char *filename)
     delete s.sectionData;
   delete p->internal;
   delete p;
-  return ns;
+  return make_pair(std::move(ns), is64);
+}
+
+struct Arguments {
+  bool resolve {false};
+  bool transitive {false};
+  bool include_main {false};
+  deque<string> files;
+  deque<string> search_path;
+  const array<const char*, 1> mingw64_search_path = {{
+    "/usr/x86_64-w64-mingw32/sys-root/mingw/bin"
+  }};
+  const array<const char*, 1> mingw64_32_search_path = {{
+    "/usr/i686-w64-mingw32/sys-root/mingw/bin"
+  }};
+  unordered_set<string> whitelist;
+  const array<const char*, 4> default_whitelist = {{
+    // lower-case because windows is case insensitive ...
+    "advapi32.dll",
+    "kernel32.dll",
+    "msvcrt.dll",
+    "user32.dll"
+  }};
+
+  void parse(int argc, char **argv);
+  void help(ostream &o, const char *argv0);
+};
+void Arguments::parse(int argc, char **argv)
+{
+  for (int i = 1; i < argc; ++i) {
+    auto a = argv[i];
+    if (!strcmp(a, "-a") || !strcmp(a, "--all")) {
+      resolve = true;
+      transitive = true;
+      include_main = true;
+    } else if (!strcmp(a, "-t") || !strcmp(a, "--transitive")) {
+      transitive = true;
+      resolve = true;
+    } else if (!strcmp(a, "-r") || !strcmp(a, "--resolve")) {
+      resolve = true;
+    } else if (!strcmp(a, "-p") || !strcmp(a, "--path")) {
+      if (++i >= argc)
+        throw runtime_error("path argument is missing");
+      search_path.push_back(argv[i]);
+    } else if (!strcmp(a, "-w") || !strcmp(a, "--wlist")) {
+      if (++i >= argc)
+        throw runtime_error("whitelist argument is missing");
+      whitelist.insert(argv[i]);
+    } else if (!strcmp(a, "-h") || !strcmp(a, "--help")) {
+      help(cout, *argv);
+      exit(0);
+    } else if (!strcmp(a, "--")) {
+      for (int k = i; k < argc; ++k)
+        files.push_back(argv[k]);
+    } else if (*a == '-') {
+      throw runtime_error("Unknown option: " + string(a));
+    } else {
+      files.push_back(a);
+    }
+  }
+  if (whitelist.empty())
+    whitelist.insert(default_whitelist.begin(), default_whitelist.end());
+}
+void Arguments::help(ostream &o, const char *argv0)
+{
+  o << "call: " << *argv0 << " (OPTION)* foo.exe\n"
+    << "  or: " << *argv0 << " (OPTION)* foo.dll\n"
+       "\n\n\nwhere OPTION  is one of:\n"
+       "  -h, --help        this screen\n"
+       "  -r, --resolve     resolve a dependency using a search path\n"
+       "  -t, --transitive  transitively list the dependencies, implies -r\n"
+       "  -a, --all         imply -t,-r and include the input PEs\n"
+       "  -p, --path        build custom search path\n"
+       "  -w  --wlist       whitelist a library name\n\n"
+       ;
+}
+
+class Path_Cache {
+  private:
+    unordered_map<string, unordered_map<string, string> > m_;
+    string resolve(const unordered_map<string, string> &h,
+        const string &filename);
+  public:
+    string resolve(const deque<string> &search_path, const string &filename);
+};
+
+string Path_Cache::resolve(const unordered_map<string, string> &h,
+    const string &filename)
+{
+  auto fn = boost::to_lower_copy(filename);
+  auto i = h.find(fn);
+  if (i == h.end())
+    throw range_error("Could not resolve: " + filename);
+  return i->second;
+}
+string Path_Cache::resolve(const deque<string> &search_path,
+    const string &filename)
+{
+  for (auto path : search_path) {
+    try {
+      auto i = m_.find(path);
+      if (i == m_.end()) {
+        unordered_map<string, string> xs;
+        for (auto &e : boost::make_iterator_range(
+              boost::filesystem::directory_iterator(path), {})) {
+          auto fn = e.path().filename().generic_string();
+          xs[boost::to_lower_copy(fn)] = std::move(fn);
+        }
+        auto r = m_.insert(make_pair(path, std::move(xs)));
+        return path + "/" + resolve(r.first->second, filename);
+      } else {
+        return path + "/" + resolve(i->second, filename);
+      }
+    } catch (const range_error &e) {
+      continue;
+    }
+  }
+  throw runtime_error("Could not resovle: " + filename);
+}
+
+class Traverser {
+  private:
+    const Arguments &args;
+    unordered_map<string, string> known_files; // basename, name
+    stack<pair<string, string> > files;
+    set<string> result_set;
+  public:
+    Traverser(const Arguments &args);
+    void prepare_stack();
+    void process_stack();
+    void print_result();
+};
+Traverser::Traverser(const Arguments &args)
+  :
+    args(args)
+{
+  prepare_stack();
+  process_stack();
+  print_result();
+}
+void Traverser::prepare_stack()
+{
+  for (auto &a : args.files) {
+    auto p = make_pair(boost::filesystem::path(a).filename().generic_string(), a);
+    if (!known_files.count(p.first)) {
+      if (args.include_main)
+        result_set.insert(p.second);
+      known_files.insert(p);
+      files.push(std::move(p));
+    }
+  }
+
+}
+void Traverser::process_stack()
+{
+  Path_Cache path_cache;
+  while (!files.empty()) {
+    auto t = files.top();
+    files.pop();
+    deque<string> search_path;
+    auto p = names(t.second.c_str());
+    auto &ns = p.first;
+    auto is64 = p.second;
+    if (args.search_path.empty()) {
+      if (is64)
+        search_path.insert(search_path.end(),
+            args.mingw64_search_path.begin(), args.mingw64_search_path.end());
+      else
+        search_path.insert(search_path.end(),
+            args.mingw64_32_search_path.begin(),
+            args.mingw64_32_search_path.end());
+    } else {
+      search_path = args.search_path;
+    }
+    for (auto &n : ns) {
+      if (args.whitelist.count(boost::algorithm::to_lower_copy(n)))
+        continue;
+      if (args.resolve) {
+        auto resolved = path_cache.resolve(search_path, n);
+        result_set.insert(resolved);
+        if (args.transitive && !known_files.count(n)) {
+          auto p = make_pair(n, resolved);
+          known_files.insert(p);
+          files.push(std::move(p));
+        }
+      } else {
+        result_set.insert(n);
+      }
+    }
+  }
+}
+void Traverser::print_result()
+{
+  for (auto &r : result_set)
+    cout << r << '\n';
 }
 
 int main(int argc, char **argv)
 {
-  if (argc < 2) {
-    cerr << "call: " << *argv << " foo.exe\n"
-      << "  or: " << *argv << " foo.dll\n";
-    exit(1);
-  }
-  const char *filename = argv[1];
   try {
-    auto ns = names(filename);
-    for (auto &n : ns)
-      cout << n << '\n';
+    Arguments args;
+    args.parse(argc, argv);
+    Traverser t(args);
   } catch (const exception &e) {
     cerr << "Error: " << e.what() << '\n';
     exit(1);
