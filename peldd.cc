@@ -289,7 +289,7 @@ void Arguments::parse(int argc, char **argv)
       help(cout, *argv);
       exit(0);
     } else if (!strcmp(a, "--")) {
-      for (int k = i; k < argc; ++k)
+      for (int k = ++i; k < argc; ++k)
         files.push_back(argv[k]);
     } else if (*a == '-') {
       throw runtime_error("Unknown option: " + string(a));
