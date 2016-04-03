@@ -38,7 +38,7 @@ struct parsed_pe_internal {
   list<section>   secs;
 };
 
-// XXX library symbols are to generic
+// XXX library symbols are too generic
 extern bool getHeader(bounded_buffer *file, pe_header &p, bounded_buffer *&rem);
 extern bool getSections( bounded_buffer  *b, 
                   bounded_buffer  *fileBegin,
@@ -46,7 +46,7 @@ extern bool getSections( bounded_buffer  *b,
                   list<section>   &secs);
 extern bool getSecForVA(list<section> &secs, VA v, section &sec);
 
-// most of the body is copied from ParsePEFromFile()
+// most of the following function body is copied from ParsePEFromFile()
 // (cf. pe-parse/parser-library/parse.cpp)
 //
 // That code is licensed as:
@@ -247,13 +247,19 @@ struct Arguments {
     "/usr/i686-w64-mingw32/sys-root/mingw/bin"
   }};
   unordered_set<string> whitelist;
-  const array<const char*, 5> default_whitelist = {{
+  const array<const char*, 11> default_whitelist = {{
     // lower-case because windows is case insensitive ...
     "advapi32.dll",
     "kernel32.dll",
     "msvcrt.dll",
     "user32.dll",
-    "ws2_32.dll"
+    "ws2_32.dll",
+    "gdi32.dll",
+    "shell32.dll",
+    "d3d9.dll",
+    "ole32.dll",
+    "winmm.dll",
+    "mpr.dll"
   }};
   bool no_default_whitelist {false};
 
