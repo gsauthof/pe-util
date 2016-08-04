@@ -32,7 +32,7 @@ Display the dependencies of a PE library:
     libwinpthread-1.dll
     USER32.dll
 
-Display the dependencies of a PE library by pointing to a custom path and excluding default path:
+Display the dependencies of a PE binary by pointing to a custom path and excluding default path:
   
     Note: peldd uses /usr/x86_64-w64-mingw32/sys-root/mingw/bin/ as its default path.
  
