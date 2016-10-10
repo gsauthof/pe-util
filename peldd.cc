@@ -287,7 +287,7 @@ void Arguments::parse(int argc, char **argv)
       if (++i >= argc)
         throw runtime_error("path argument is missing");
       search_path.push_back(argv[i]);
-    } else if (!strcmp(a, "--no-path")) {
+    } else if (!strcmp(a, "--disable-default-path")) {
       no_default_search_path = true;
     } else if (!strcmp(a, "-w") || !strcmp(a, "--wlist")) {
       if (++i >= argc)
@@ -320,7 +320,7 @@ void Arguments::help(ostream &o, const char *argv0)
        "  -t, --transitive  transitively list the dependencies, implies -r\n"
        "  -a, --all         imply -t,-r and include the input PEs\n"
        "  -p, --path        build custom search path\n"
-       "      --no-path     don't include the default mingw64/-32 path\n"
+       "      --disable-default-path    don't include the default mingw64/-32 path\n"
        "  -w  --wlist       whitelist a library name\n"
        "      --no-wlist    don't populate the whitelist with defaults\n"
        "\n"
