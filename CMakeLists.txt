@@ -14,3 +14,6 @@ add_executable(peldd
 set_property(TARGET peldd PROPERTY INCLUDE_DIRECTORIES
     ${CMAKE_CURRENT_SOURCE_DIR}/pe-parse)
 target_link_libraries(peldd pe-parser-library ${Boost_LIBRARIES})
+
+install(TARGETS peldd
+        RUNTIME DESTINATION bin)
