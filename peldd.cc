@@ -288,13 +288,13 @@ void Arguments::parse(int argc, char **argv)
       if (++i >= argc)
         throw runtime_error("path argument is missing");
       search_path.push_back(argv[i]);
-    } else if (!strcmp(a, "--no-path")) {
+    } else if (!strcmp(a, "--no-path") || !strcmp(a, "--clear-path")) {
       no_default_search_path = true;
     } else if (!strcmp(a, "-w") || !strcmp(a, "--wlist")) {
       if (++i >= argc)
         throw runtime_error("whitelist argument is missing");
       whitelist.insert(boost::to_lower_copy(string(argv[i])));
-    } else if (!strcmp(a, "--no-wlist")) {
+    } else if (!strcmp(a, "--no-wlist") || !strcmp(a, "--clear-wlist")) {
       no_default_whitelist = true;
     } else if (!strcmp(a, "--ignore-errors")) {
       ignore_errors = true;
@@ -323,9 +323,11 @@ void Arguments::help(ostream &o, const char *argv0)
      "  -t, --transitive     transitively list the dependencies, implies -r\n"
      "  -a, --all            imply -t,-r and include the input PEs\n"
      "  -p, --path           build custom search path\n"
-     "      --no-path        don't include the default mingw64/-32 path\n"
+     "      --no-path\n"
+     "      --clear-path     don't include the default mingw64/-32 path\n"
      "  -w  --wlist          whitelist a library name\n"
-     "      --no-wlist       don't populate the whitelist with defaults\n"
+     "      --no-wlist\n"
+     "      --clear-wlist    don't populate the whitelist with defaults\n"
      "      --ignore-errors  ignore library-not-found errors\n"
        "\n"
        ;

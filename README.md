@@ -67,6 +67,8 @@ The same binary after extending the whitelist:
     /usr/x86_64-w64-mingw32/sys-root/mingw/bin/zlib1.dll
     ut.exe
 
+There is also `--ignore-errors` for ignoring resolve errors.
+
 Deploy a cross compiled binary:
 
     $ peldd ut.exe -a | xargs cp -t /mnt/win/builds/
