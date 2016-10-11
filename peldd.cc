@@ -266,6 +266,7 @@ struct Arguments {
     "shlwapi.dll"
   }};
   bool no_default_whitelist {false};
+  bool ignore_errors {false};
 
   void parse(int argc, char **argv);
   void help(ostream &o, const char *argv0);
@@ -295,6 +296,8 @@ void Arguments::parse(int argc, char **argv)
       whitelist.insert(boost::to_lower_copy(string(argv[i])));
     } else if (!strcmp(a, "--no-wlist")) {
       no_default_whitelist = true;
+    } else if (!strcmp(a, "--ignore-errors")) {
+      ignore_errors = true;
     } else if (!strcmp(a, "-h") || !strcmp(a, "--help")) {
       help(cout, *argv);
       exit(0);
@@ -312,17 +315,18 @@ void Arguments::parse(int argc, char **argv)
 }
 void Arguments::help(ostream &o, const char *argv0)
 {
-  o << "call: " << *argv0 << " (OPTION)* foo.exe\n"
-    << "  or: " << *argv0 << " (OPTION)* foo.dll\n"
-       "\n\n\nwhere OPTION  is one of:\n"
-       "  -h, --help        this screen\n"
-       "  -r, --resolve     resolve a dependency using a search path\n"
-       "  -t, --transitive  transitively list the dependencies, implies -r\n"
-       "  -a, --all         imply -t,-r and include the input PEs\n"
-       "  -p, --path        build custom search path\n"
-       "      --no-path     don't include the default mingw64/-32 path\n"
-       "  -w  --wlist       whitelist a library name\n"
-       "      --no-wlist    don't populate the whitelist with defaults\n"
+  o << "call: " << argv0 << " (OPTION)* foo.exe\n"
+    << "  or: " << argv0 << " (OPTION)* foo.dll\n"
+     "\n\n\nwhere OPTION  is one of:\n"
+     "  -h, --help           this screen\n"
+     "  -r, --resolve        resolve a dependency using a search path\n"
+     "  -t, --transitive     transitively list the dependencies, implies -r\n"
+     "  -a, --all            imply -t,-r and include the input PEs\n"
+     "  -p, --path           build custom search path\n"
+     "      --no-path        don't include the default mingw64/-32 path\n"
+     "  -w  --wlist          whitelist a library name\n"
+     "      --no-wlist       don't populate the whitelist with defaults\n"
+     "      --ignore-errors  ignore library-not-found errors\n"
        "\n"
        ;
 }
@@ -367,7 +371,7 @@ string Path_Cache::resolve(const deque<string> &search_path,
       continue;
     }
   }
-  throw runtime_error("Could not resolve: " + filename);
+  throw range_error("Could not resolve: " + filename);
 }
 
 class Traverser {
@@ -426,12 +430,20 @@ void Traverser::process_stack()
       if (args.whitelist.count(boost::algorithm::to_lower_copy(n)))
         continue;
       if (args.resolve) {
-        auto resolved = path_cache.resolve(search_path, n);
-        result_set.insert(resolved);
-        if (args.transitive && !known_files.count(n)) {
-          auto p = make_pair(n, resolved);
-          known_files.insert(p);
-          files.push(std::move(p));
+        try {
+          auto resolved = path_cache.resolve(search_path, n);
+          result_set.insert(resolved);
+          if (args.transitive && !known_files.count(n)) {
+            auto p = make_pair(n, resolved);
+            known_files.insert(p);
+            files.push(std::move(p));
+          }
+        } catch (const range_error &e) {
+          if (args.ignore_errors) {
+            cerr << e.what() << '\n';
+            continue;
+          }
+          throw;
         }
       } else {
         result_set.insert(n);
