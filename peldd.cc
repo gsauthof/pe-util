@@ -2,6 +2,7 @@
 
 
 #include <parser-library/parse.h>
+#include <parser-library/nt-headers.h>
 
 #include <iostream>
 #include <array>
@@ -21,12 +22,16 @@
 #include <boost/algorithm/string/case_conv.hpp>
 
 using namespace std;
+using namespace peparse;
+
+namespace peparse {
 
 // XXX make static in library ...
 extern ::uint32_t err;
 extern std::string err_loc;
 
 // XXX duplicated from parse.cc
+
 struct section {
   string                sectionName;
   ::uint64_t            sectionBase;
@@ -38,6 +43,13 @@ struct parsed_pe_internal {
   list<section>   secs;
 };
 
+#define READ_DWORD_NULL(b, o, inst, member)                                     \
+  if (!readDword(b, o + _offset(__typeof__(inst), member), inst.member)) { \
+    PE_ERR(PEERR_READ);                                                    \
+    return nullptr;                                                          \
+  }
+
+
 // XXX library symbols are too generic
 extern bool getHeader(bounded_buffer *file, pe_header &p, bounded_buffer *&rem);
 extern bool getSections( bounded_buffer  *b, 
@@ -45,9 +57,10 @@ extern bool getSections( bounded_buffer  *b,
                   nt_header_32    &nthdr, 
                   list<section>   &secs);
 extern bool getSecForVA(list<section> &secs, VA v, section &sec);
+}
 
 // most of the following function body is copied from ParsePEFromFile()
-// (cf. pe-parse/parser-library/parse.cpp)
+// (cf. pe-parse/pe-parser-library/src/parse.cpp)
 //
 // That code is licensed as:
 /*
@@ -156,9 +169,13 @@ parsed_pe *names_prime(const char *filePath, deque<string> &ns,
 
     //get import directory from this section
     ::uint32_t  offt = addr - c.sectionBase;
+
+    import_dir_entry emptyEnt;
+    memset(&emptyEnt, 0, sizeof(import_dir_entry));
+
     do {
       //read each directory entry out
-      import_dir_entry  curEnt;
+      import_dir_entry curEnt = emptyEnt;
 
       READ_DWORD_NULL(c.sectionData, offt, curEnt, LookupTableRVA);
       READ_DWORD_NULL(c.sectionData, offt, curEnt, TimeStamp);

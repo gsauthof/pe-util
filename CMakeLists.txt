@@ -7,13 +7,14 @@ find_package(Boost 1.54
     system # needed by filesystem, log
     filesystem)
 
-add_subdirectory(pe-parse/parser-library)
-
 add_executable(peldd
-  peldd.cc)
+  peldd.cc
+  pe-parse/pe-parser-library/src/parse.cpp
+  pe-parse/pe-parser-library/src/buffer.cpp
+  )
 set_property(TARGET peldd PROPERTY INCLUDE_DIRECTORIES
-    ${CMAKE_CURRENT_SOURCE_DIR}/pe-parse)
-target_link_libraries(peldd pe-parser-library ${Boost_LIBRARIES})
+    ${CMAKE_CURRENT_SOURCE_DIR}/pe-parse/pe-parser-library/include)
+target_link_libraries(peldd ${Boost_LIBRARIES})
 
 install(TARGETS peldd
         RUNTIME DESTINATION bin)
