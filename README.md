@@ -73,6 +73,23 @@ Deploy a cross compiled binary:
 
     $ peldd ut.exe -a | xargs cp -t /mnt/win/builds/
 
+## Build Instructions
+
+To build `peldd` itself:
+
+    git clone https://github.com/gsauthof/pe-util.git
+    cd pe-util
+    git submodule update --init
+    mkdir build
+    cd build
+    cmake .. -DCMAKE_BUILD_TYPE=Release
+    make VERBOSE=1
+
+Or if `ninja` is available and enable debug mode (replace last 2 steps):
+
+    CXXFLAGS='-fsanitize=address -fsanitize=undefined -Og' cmake .. -DCMAKE_BUILD_TYPE=Debug -G Ninja
+    ninja -v
+
 ## License
 
 Both the library and the program are licensed under the MIT license.
