@@ -264,7 +264,7 @@ struct Arguments {
     "/usr/i686-w64-mingw32/sys-root/mingw/bin"
   }};
   unordered_set<string> whitelist;
-  const array<const char*, 16> default_whitelist = {{
+  const array<const char*, 36> default_whitelist = {{
     // lower-case because windows is case insensitive ...
     "advapi32.dll",
     "kernel32.dll",
@@ -279,9 +279,29 @@ struct Arguments {
     "mpr.dll",
     "psapi.dll",
     "avicap32.dll",
+    "bcrypt.dll",
+    "comctl32.dll",
+    "comdlg32.dll",
+    "crypt32.dll",
+    "dnsapi.dll",
+    "dwmapi.dll",
+    "imm32.dll",
+    "iphlpapi.dll",
+    "msimg32.dll",
+    "netapi32.dll",
+    "normaliz.dll",
     "oleaut32.dll",
+    "powrprof.dll",
+    "setupapi.dll",
     "shlwapi.dll",
-    "secur32.dll"
+    "secur32.dll",
+    "usp10.dll",
+    "version.dll",
+    "wininet.dll",
+    "winspool.dll",
+    "winspool.drv",
+    "wldap32.dll",
+    "wtsapi32.dll"
   }};
   bool no_default_whitelist {false};
   bool ignore_errors {false};
