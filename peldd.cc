@@ -70,7 +70,25 @@ string _to_lower(const std::string &str) {
   string result(str);
   transform(result.begin(), result.end(), result.begin(), ::tolower);
   return result;
+}
+
+vector<string> _get_path_dirs() {
+  vector<string> result;
+#if WIN32
+  char delim = ';';
+#else
+  char delim = ':';
 #endif
+  string PATH = getenv("PATH");
+  for (size_t start, end = 0; (start = PATH.find_first_not_of(delim, end)) != string::npos; ) {
+    end = PATH.find(delim, start);
+    result.push_back(PATH.substr(start, end != string::npos ? end - start : end));
+  }
+  return result;
+}
+
+string _get_cwd() {
+  return fs::current_path().string();
 }
 }
 
@@ -342,6 +360,11 @@ void Arguments::parse(int argc, char **argv)
       search_path.push_back(argv[i]);
     } else if (!strcmp(a, "--no-path") || !strcmp(a, "--clear-path")) {
       no_default_search_path = true;
+    } else if (!strcmp(a, "--search-env")) {
+      for (auto &path : _get_path_dirs())
+        search_path.push_back(path);
+    } else if (!strcmp(a, "--search-cwd")) {
+      search_path.push_back(_get_cwd());
     } else if (!strcmp(a, "-w") || !strcmp(a, "--wlist")) {
       if (++i >= argc)
         throw runtime_error("whitelist argument is missing");
@@ -377,6 +400,8 @@ void Arguments::help(ostream &o, const char *argv0)
      "  -p, --path           build custom search path\n"
      "      --no-path\n"
      "      --clear-path     don't include the default mingw64/-32 path\n"
+     "      --search-env     add all PATH directories to search path\n"
+     "      --search-cwd     add current working directory to search path\n"
      "  -w  --wlist          whitelist a library name\n"
      "      --no-wlist\n"
      "      --clear-wlist    don't populate the whitelist with defaults\n"
