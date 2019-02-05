@@ -20,7 +20,6 @@
 
 #if USE_BOOST
   #include <boost/filesystem.hpp>
-  #include <boost/algorithm/string/case_conv.hpp>
   namespace fs = boost::filesystem;
 #elif USE_FILESYSTEM
   #include <filesystem>
@@ -67,9 +66,6 @@ extern bool getSections( bounded_buffer  *b,
 extern bool getSecForVA(const vector<section> &secs, VA v, section &sec);
 
 string _to_lower(const std::string &str) {
-#if USE_BOOST
-  return boost::to_lower_copy(str);
-#else
   // Not UTF-8 safe, use ICU?
   string result(str);
   transform(result.begin(), result.end(), result.begin(), ::tolower);
@@ -109,9 +105,9 @@ parsed_pe *names_prime(const char *filePath, deque<string> &ns, bool &is64) {
   //first, create a new parsed_pe structure
   auto *p = new parsed_pe();
 
-  if(p == NULL) {
+  if(p == nullptr) {
     PE_ERR(PEERR_MEM);
-    return NULL;
+    return nullptr;
   }
 
   //make a new buffer object to hold just our file data
@@ -417,13 +413,13 @@ string Path_Cache::resolve(const deque<string> &search_path,
         if (i == m_.end()) {
           unordered_map<string, string> xs;
           for (auto &e : fs::directory_iterator(path)) {
-            auto fn = e.path().filename().generic_string();
+            auto fn = e.path().filename().string();
             xs[_to_lower(fn)] = std::move(fn);
           }
           auto r = m_.insert(make_pair(path, std::move(xs)));
-          return path + "/" + resolve(r.first->second, filename);
+          return path + (char)fs::path::preferred_separator + resolve(r.first->second, filename);
         } else {
-          return path + "/" + resolve(i->second, filename);
+          return path + (char)fs::path::preferred_separator + resolve(i->second, filename);
         }
       }
       catch (const range_error &e) {
@@ -459,7 +455,7 @@ Traverser::Traverser(const Arguments &args)
 void Traverser::prepare_stack()
 {
   for (auto &a : args.files) {
-    auto p = make_pair(fs::path(a).filename().generic_string(), a);
+    auto p = make_pair(fs::path(a).filename().string(), a);
     if (!known_files.count(p.first)) {
       if (args.include_main)
         result_set.insert(p.second);
