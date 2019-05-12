@@ -5,7 +5,6 @@
 #include <parser-library/nt-headers.h>
 
 #include <iostream>
-#include <array>
 #include <unordered_map>
 #include <unordered_set>
 #include <set>
@@ -289,14 +288,14 @@ struct Arguments {
   deque<string> files;
   deque<string> search_path;
   bool no_default_search_path {false};
-  const array<const char*, 1> mingw64_search_path = {{
+  const vector<string> mingw64_search_path = {
     "/usr/x86_64-w64-mingw32/sys-root/mingw/bin"
-  }};
-  const array<const char*, 1> mingw64_32_search_path = {{
+  };
+  const vector<string> mingw64_32_search_path = {
     "/usr/i686-w64-mingw32/sys-root/mingw/bin"
-  }};
+  };
   unordered_set<string> whitelist;
-  const array<const char*, 53> default_whitelist = {{
+  const vector<string> default_whitelist = {
     // lower-case because windows is case insensitive ...
     "advapi32.dll",
     "avicap32.dll",
@@ -351,7 +350,7 @@ struct Arguments {
     "wldap32.dll",
     "ws2_32.dll",
     "wtsapi32.dll",
-  }};
+  };
   bool no_default_whitelist {false};
   bool ignore_errors {false};
 
