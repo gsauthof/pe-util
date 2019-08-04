@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <stdlib.h>
 #include <string.h>
+#include <regex>
 
 #if USE_BOOST
   #include <boost/filesystem.hpp>
@@ -69,6 +70,24 @@ string _to_lower(const std::string &str) {
   string result(str);
   transform(result.begin(), result.end(), result.begin(), ::tolower);
   return result;
+}
+
+bool _regex_match(const string &r, const string &s) {
+  return regex_match(s, regex(r, regex_constants::ECMAScript | regex_constants::icase));
+}
+
+bool _wlist_match(const unordered_set<string> &wlist, const string &s) {
+  for (auto &w : wlist) {
+    // match regex if in /regex/ format
+    if (w.length() > 1 && w.at(0) == '/' && w.at(w.length() - 1) == '/') {
+      if (_regex_match(w.substr(1, w.length() - 2), s))
+        return true;
+    }
+    // match literal
+    else if (w == _to_lower(s))
+      return true;
+  }
+  return false;
 }
 
 vector<string> _get_path_dirs() {
@@ -298,6 +317,7 @@ struct Arguments {
   const vector<string> default_whitelist = {
     // lower-case because windows is case insensitive ...
     "advapi32.dll",
+    "/api-ms-.*\\.dll/",
     "avicap32.dll",
     "bcrypt.dll",
     "comctl32.dll",
@@ -526,7 +546,7 @@ void Traverser::process_stack()
             args.mingw64_32_search_path.end());
     }
     for (auto &n : ns) {
-      if (args.whitelist.count(_to_lower(n)))
+      if (_wlist_match(args.whitelist, n))
         continue;
       if (args.resolve) {
         try {
