@@ -11,6 +11,7 @@ add_executable(peldd
   peldd.cc
   pe-parse/pe-parser-library/src/parse.cpp
   pe-parse/pe-parser-library/src/buffer.cpp
+  pe-parse/pe-parser-library/src/unicode_codecvt.cpp
   )
 set_property(TARGET peldd PROPERTY INCLUDE_DIRECTORIES
     ${CMAKE_CURRENT_SOURCE_DIR}/pe-parse/pe-parser-library/include)

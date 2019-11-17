@@ -17,6 +17,7 @@
 #include <stdexcept>
 #include <stdlib.h>
 #include <string.h>
+#include <vector>
 
 #include <boost/filesystem.hpp>
 #include <boost/algorithm/string/case_conv.hpp>
@@ -40,7 +41,7 @@ struct section {
 };
 
 struct parsed_pe_internal {
-  list<section>   secs;
+  std::vector<section>   secs;
 };
 
 #define READ_DWORD_NULL(b, o, inst, member)                                     \
@@ -52,11 +53,8 @@ struct parsed_pe_internal {
 
 // XXX library symbols are too generic
 extern bool getHeader(bounded_buffer *file, pe_header &p, bounded_buffer *&rem);
-extern bool getSections( bounded_buffer  *b, 
-                  bounded_buffer  *fileBegin,
-                  nt_header_32    &nthdr, 
-                  list<section>   &secs);
-extern bool getSecForVA(list<section> &secs, VA v, section &sec);
+extern bool getSections(bounded_buffer *b, bounded_buffer *fileBegin, nt_header_32 &nthdr, std::vector<section> &secs);
+extern bool getSecForVA(const std::vector<section> &secs, VA v, section &sec);
 }
 
 // most of the following function body is copied from ParsePEFromFile()
