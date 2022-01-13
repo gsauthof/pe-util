@@ -358,7 +358,6 @@ struct Arguments {
     "urlmon.dll",
     "user32.dll",
     "userenv.dll",
-    "userenv.dll",
     "usp10.dll",
     "uxtheme.dll",
     "version.dll",
