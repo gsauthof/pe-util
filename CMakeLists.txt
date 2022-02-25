@@ -1,10 +1,20 @@
-cmake_minimum_required(VERSION 2.8.8)
+cmake_minimum_required(VERSION 2.8.8...3.22.1)
 project(mingw_util CXX)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall")
 
+if(MINGW)
+    if (CMAKE_SIZEOF_VOID_P EQUAL 8)
+	set(Boost_ARCHITECTURE "-x64")
+    else()
+	set(Boost_ARCHITECTURE "-x32")
+    endif()
+endif()
+
+# set(Boost_DEBUG ON)
+
 find_package(Boost 1.54
-  COMPONENTS
-    system # needed by filesystem, log
+    REQUIRED COMPONENTS
+    system      # needed by filesystem
     filesystem)
 
 add_executable(peldd
