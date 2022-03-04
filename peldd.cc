@@ -5,7 +5,6 @@
 #include <parser-library/nt-headers.h>
 
 #include <iostream>
-#include <array>
 #include <unordered_map>
 #include <unordered_set>
 #include <set>
@@ -17,9 +16,18 @@
 #include <stdexcept>
 #include <stdlib.h>
 #include <string.h>
+#include <regex>
 
-#include <boost/filesystem.hpp>
-#include <boost/algorithm/string/case_conv.hpp>
+#if USE_BOOST
+  #include <boost/filesystem.hpp>
+  namespace fs = boost::filesystem;
+#elif USE_FILESYSTEM
+  #include <filesystem>
+  namespace fs = std::filesystem;
+#elif USE_FILESYSTEM_EXPERIMENTAL
+  #include <experimental/filesystem>
+  namespace fs = std::experimental::filesystem;
+#endif
 
 using namespace std;
 using namespace peparse;
@@ -31,7 +39,6 @@ extern ::uint32_t err;
 extern std::string err_loc;
 
 // XXX duplicated from parse.cc
-
 struct section {
   string                sectionName;
   ::uint64_t            sectionBase;
@@ -40,23 +47,67 @@ struct section {
 };
 
 struct parsed_pe_internal {
-  list<section>   secs;
+  vector<section> secs;
 };
 
-#define READ_DWORD_NULL(b, o, inst, member)                                     \
-  if (!readDword(b, o + _offset(__typeof__(inst), member), inst.member)) { \
-    PE_ERR(PEERR_READ);                                                    \
-    return nullptr;                                                          \
+#define READ_DWORD_NULL(b, o, inst, member)                                 \
+  if (!readDword(b, o + _offset(__typeof__(inst), member), inst.member)) {  \
+    PE_ERR(PEERR_READ);                                                     \
+    return nullptr;                                                         \
   }
 
 
 // XXX library symbols are too generic
 extern bool getHeader(bounded_buffer *file, pe_header &p, bounded_buffer *&rem);
-extern bool getSections( bounded_buffer  *b, 
-                  bounded_buffer  *fileBegin,
-                  nt_header_32    &nthdr, 
-                  list<section>   &secs);
-extern bool getSecForVA(list<section> &secs, VA v, section &sec);
+extern bool getSections( bounded_buffer  *b,
+                        bounded_buffer  *fileBegin,
+                        nt_header_32    &nthdr,
+                        vector<section>   &secs);
+extern bool getSecForVA(const vector<section> &secs, VA v, section &sec);
+
+string _to_lower(const std::string &str) {
+  // Not UTF-8 safe, use ICU?
+  string result(str);
+  transform(result.begin(), result.end(), result.begin(), ::tolower);
+  return result;
+}
+
+bool _regex_match(const string &r, const string &s) {
+  return regex_match(s, regex(r, regex_constants::ECMAScript | regex_constants::icase));
+}
+
+bool _wlist_match(const unordered_set<string> &wlist, const string &s) {
+  for (auto &w : wlist) {
+    // match regex if in /regex/ format
+    if (w.length() > 1 && w.at(0) == '/' && w.at(w.length() - 1) == '/') {
+      if (_regex_match(w.substr(1, w.length() - 2), s))
+        return true;
+    }
+    // match literal
+    else if (w == _to_lower(s))
+      return true;
+  }
+  return false;
+}
+
+vector<string> _get_path_dirs() {
+  vector<string> result;
+#if WIN32
+  char delim = ';';
+#else
+  char delim = ':';
+#endif
+  string PATH = getenv("PATH");
+  for (size_t start, end = 0; (start = PATH.find_first_not_of(delim, end)) != string::npos; ) {
+    end = PATH.find(delim, start);
+    result.push_back(PATH.substr(start, end != string::npos ? end - start : end));
+  }
+  return result;
+}
+
+string _get_cwd() {
+  return fs::current_path().string();
+}
 }
 
 // most of the following function body is copied from ParsePEFromFile()
@@ -86,43 +137,42 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
-parsed_pe *names_prime(const char *filePath, deque<string> &ns,
-    bool &is64) {
+parsed_pe *names_prime(const char *filePath, deque<string> &ns, bool &is64) {
   //first, create a new parsed_pe structure
-  parsed_pe *p = new parsed_pe();
+  auto *p = new parsed_pe();
 
-  if(p == NULL) {
+  if(p == nullptr) {
     PE_ERR(PEERR_MEM);
-    return NULL;
+    return nullptr;
   }
 
-  //make a new buffer object to hold just our file data 
+  //make a new buffer object to hold just our file data
   p->fileBuffer = readFileToFileBuffer(filePath);
 
-  if(p->fileBuffer == NULL) {
+  if(p->fileBuffer == nullptr) {
     delete p;
     // err is set by readFileToFileBuffer
-    return NULL;
+    return nullptr;
   }
 
   p->internal = new parsed_pe_internal();
 
   //get header information
-  bounded_buffer  *remaining = NULL;
-  if(getHeader(p->fileBuffer, p->peHeader, remaining) == false) {
+  bounded_buffer  *remaining = nullptr;
+  if(!getHeader(p->fileBuffer, p->peHeader, remaining)) {
     deleteBuffer(p->fileBuffer);
     delete p;
     // err is set by getHeader
-    return NULL;
+    return nullptr;
   }
 
   bounded_buffer  *file = p->fileBuffer;
-  if(getSections(remaining, file, p->peHeader.nt, p->internal->secs) == false) {
+  if(!getSections(remaining, file, p->peHeader.nt, p->internal->secs)) {
     deleteBuffer(remaining);
     deleteBuffer(p->fileBuffer);
     delete p;
     PE_ERR(PEERR_SECT);
-    return NULL;
+    return nullptr;
   }
 
    
@@ -140,7 +190,7 @@ parsed_pe *names_prime(const char *filePath, deque<string> &ns,
     deleteBuffer(p->fileBuffer);
     delete p;
     PE_ERR(PEERR_MAGIC);
-    return NULL;
+    return nullptr;
   }
 
   if(importDir.Size != 0) {
@@ -156,19 +206,19 @@ parsed_pe *names_prime(const char *filePath, deque<string> &ns,
       deleteBuffer(p->fileBuffer);
       delete p;
       PE_ERR(PEERR_MAGIC);
-      return NULL;
+      return nullptr;
     }
 
-    if(getSecForVA(p->internal->secs, addr, c) == false) {
+    if(!getSecForVA(p->internal->secs, addr, c)) {
       deleteBuffer(remaining);
       deleteBuffer(p->fileBuffer);
       delete p;
       PE_ERR(PEERR_READ);
-      return NULL;
+      return nullptr;
     }
 
     //get import directory from this section
-    ::uint32_t  offt = addr - c.sectionBase;
+    ::uint32_t offt = addr - c.sectionBase;
 
     import_dir_entry emptyEnt;
     memset(&emptyEnt, 0, sizeof(import_dir_entry));
@@ -201,19 +251,19 @@ parsed_pe *names_prime(const char *filePath, deque<string> &ns,
         deleteBuffer(p->fileBuffer);
         delete p;
         PE_ERR(PEERR_MAGIC);
-        return NULL;
+        return nullptr;
       }
 
       section nameSec;
-      if(getSecForVA(p->internal->secs, name, nameSec) == false) {
+      if(!getSecForVA(p->internal->secs, name, nameSec)) {
         PE_ERR(PEERR_SECTVA);
         deleteBuffer(remaining);
         deleteBuffer(p->fileBuffer);
         delete p;
-        return NULL;
+        return nullptr;
       }
 
-      ::uint32_t  nameOff = name - nameSec.sectionBase;
+      ::uint32_t nameOff = name - nameSec.sectionBase;
 
       // GS: replace original byte-by-byte copy version
       if (nameOff < nameSec.sectionData->bufLen) {
@@ -235,7 +285,7 @@ parsed_pe *names_prime(const char *filePath, deque<string> &ns,
 
 static pair<deque<string>, bool> names(const char *filename)
 {
-  if (!boost::filesystem::exists(filename))
+  if (!fs::exists(filename))
     throw runtime_error("File doesn't exist: " + string(filename));
   deque<string> ns;
   bool is64 = false;
@@ -257,52 +307,69 @@ struct Arguments {
   deque<string> files;
   deque<string> search_path;
   bool no_default_search_path {false};
-  const array<const char*, 1> mingw64_search_path = {{
+  const vector<string> mingw64_search_path = {
     "/usr/x86_64-w64-mingw32/sys-root/mingw/bin"
-  }};
-  const array<const char*, 1> mingw64_32_search_path = {{
+  };
+  const vector<string> mingw64_32_search_path = {
     "/usr/i686-w64-mingw32/sys-root/mingw/bin"
-  }};
+  };
   unordered_set<string> whitelist;
-  const array<const char*, 36> default_whitelist = {{
+  const vector<string> default_whitelist = {
     // lower-case because windows is case insensitive ...
     "advapi32.dll",
-    "kernel32.dll",
-    "msvcrt.dll",
-    "user32.dll",
-    "ws2_32.dll",
-    "gdi32.dll",
-    "shell32.dll",
-    "d3d9.dll",
-    "ole32.dll",
-    "winmm.dll",
-    "mpr.dll",
-    "psapi.dll",
+    "/api-ms-.*\\.dll/",
     "avicap32.dll",
     "bcrypt.dll",
     "comctl32.dll",
     "comdlg32.dll",
+    "credui.dll",
     "crypt32.dll",
+    "cryptui.dll",
+    "d3d11.dll",
+    "d3d9.dll",
+    "dbghelp.dll",
+    "dhcpcsvc.dll",
     "dnsapi.dll",
     "dwmapi.dll",
+    "dwrite.dll",
+    "dxgi.dll",
+    "dxva2.dll",
+    "gdi32.dll",
+    "hid.dll",
     "imm32.dll",
     "iphlpapi.dll",
+    "kernel32.dll",
+    "mpr.dll",
     "msimg32.dll",
+    "msvcrt.dll",
+    "ncrypt.dll",
     "netapi32.dll",
     "normaliz.dll",
+    "ole32.dll",
+    "oleacc.dll",
     "oleaut32.dll",
     "powrprof.dll",
-    "setupapi.dll",
-    "shlwapi.dll",
+    "propsys.dll",
+    "psapi.dll",
     "secur32.dll",
+    "setupapi.dll",
+    "shell32.dll",
+    "shlwapi.dll",
+    "urlmon.dll",
+    "user32.dll",
+    "userenv.dll",
     "usp10.dll",
+    "uxtheme.dll",
     "version.dll",
+    "winhttp.dll",
     "wininet.dll",
+    "winmm.dll",
     "winspool.dll",
     "winspool.drv",
     "wldap32.dll",
-    "wtsapi32.dll"
-  }};
+    "ws2_32.dll",
+    "wtsapi32.dll",
+  };
   bool no_default_whitelist {false};
   bool ignore_errors {false};
 
@@ -328,10 +395,15 @@ void Arguments::parse(int argc, char **argv)
       search_path.push_back(argv[i]);
     } else if (!strcmp(a, "--no-path") || !strcmp(a, "--clear-path")) {
       no_default_search_path = true;
+    } else if (!strcmp(a, "--search-env")) {
+      for (auto &path : _get_path_dirs())
+        search_path.push_back(path);
+    } else if (!strcmp(a, "--search-cwd")) {
+      search_path.push_back(_get_cwd());
     } else if (!strcmp(a, "-w") || !strcmp(a, "--wlist")) {
       if (++i >= argc)
         throw runtime_error("whitelist argument is missing");
-      whitelist.insert(boost::to_lower_copy(string(argv[i])));
+      whitelist.insert(_to_lower(string(argv[i])));
     } else if (!strcmp(a, "--no-wlist") || !strcmp(a, "--clear-wlist")) {
       no_default_whitelist = true;
     } else if (!strcmp(a, "--ignore-errors")) {
@@ -363,6 +435,8 @@ void Arguments::help(ostream &o, const char *argv0)
      "  -p, --path           build custom search path\n"
      "      --no-path\n"
      "      --clear-path     don't include the default mingw64/-32 path\n"
+     "      --search-env     add all PATH directories to search path\n"
+     "      --search-cwd     add current working directory to search path\n"
      "  -w  --wlist          whitelist a library name\n"
      "      --no-wlist\n"
      "      --clear-wlist    don't populate the whitelist with defaults\n"
@@ -383,7 +457,7 @@ class Path_Cache {
 string Path_Cache::resolve(const unordered_map<string, string> &h,
     const string &filename)
 {
-  auto fn = boost::to_lower_copy(filename);
+  auto fn = _to_lower(filename);
   auto i = h.find(fn);
   if (i == h.end())
     throw range_error("Could not resolve: " + filename);
@@ -393,23 +467,27 @@ string Path_Cache::resolve(const deque<string> &search_path,
     const string &filename)
 {
   for (auto path : search_path) {
-    try {
-      auto i = m_.find(path);
-      if (i == m_.end()) {
-        unordered_map<string, string> xs;
-        for (auto &e : boost::make_iterator_range(
-              boost::filesystem::directory_iterator(path), {})) {
-          auto fn = e.path().filename().generic_string();
-          xs[boost::to_lower_copy(fn)] = std::move(fn);
+    if (fs::exists(path)) {
+      try {
+        auto i = m_.find(path);
+        if (i == m_.end()) {
+          unordered_map<string, string> xs;
+          for (auto &e : fs::directory_iterator(path)) {
+            auto fn = e.path().filename().string();
+            xs[_to_lower(fn)] = std::move(fn);
+          }
+          auto r = m_.insert(make_pair(path, std::move(xs)));
+          return path + (char)fs::path::preferred_separator + resolve(r.first->second, filename);
+        } else {
+          return path + (char)fs::path::preferred_separator + resolve(i->second, filename);
         }
-        auto r = m_.insert(make_pair(path, std::move(xs)));
-        return path + "/" + resolve(r.first->second, filename);
-      } else {
-        return path + "/" + resolve(i->second, filename);
       }
-    } catch (const range_error &e) {
-      continue;
+      catch (const range_error &e) {
+        continue;
+      }
     }
+    else
+      continue;
   }
   throw range_error("Could not resolve: " + filename);
 }
@@ -437,7 +515,7 @@ Traverser::Traverser(const Arguments &args)
 void Traverser::prepare_stack()
 {
   for (auto &a : args.files) {
-    auto p = make_pair(boost::filesystem::path(a).filename().generic_string(), a);
+    auto p = make_pair(fs::path(a).filename().string(), a);
     if (!known_files.count(p.first)) {
       if (args.include_main)
         result_set.insert(p.second);
@@ -467,7 +545,7 @@ void Traverser::process_stack()
             args.mingw64_32_search_path.end());
     }
     for (auto &n : ns) {
-      if (args.whitelist.count(boost::algorithm::to_lower_copy(n)))
+      if (_wlist_match(args.whitelist, n))
         continue;
       if (args.resolve) {
         try {
