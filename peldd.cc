@@ -6,6 +6,7 @@
 
 #include <iostream>
 #include <array>
+#include <filesystem>
 #include <unordered_map>
 #include <unordered_set>
 #include <set>
@@ -13,16 +14,23 @@
 #include <stack>
 #include <deque>
 #include <list>
+#include <locale>
 #include <algorithm>
 #include <stdexcept>
 #include <stdlib.h>
 #include <string.h>
 
-#include <boost/filesystem.hpp>
-#include <boost/algorithm/string/case_conv.hpp>
-
 using namespace std;
 using namespace peparse;
+
+template<class Seq>
+Seq to_lower_copy(const Seq &input, const std::locale &loc = std::locale())
+{
+    Seq out = input;
+    std::transform(std::begin(input), std::end(input), std::begin(out),
+                   [&](auto &&arg) { return std::tolower(arg, loc); });
+    return out;
+}
 
 namespace peparse {
 
@@ -235,7 +243,7 @@ parsed_pe *names_prime(const char *filePath, deque<string> &ns,
 
 static pair<deque<string>, bool> names(const char *filename)
 {
-  if (!boost::filesystem::exists(filename))
+  if (!std::filesystem::exists(filename))
     throw runtime_error("File doesn't exist: " + string(filename));
   deque<string> ns;
   bool is64 = false;
@@ -331,7 +339,7 @@ void Arguments::parse(int argc, char **argv)
     } else if (!strcmp(a, "-w") || !strcmp(a, "--wlist")) {
       if (++i >= argc)
         throw runtime_error("whitelist argument is missing");
-      whitelist.insert(boost::to_lower_copy(string(argv[i])));
+      whitelist.insert(to_lower_copy(string(argv[i])));
     } else if (!strcmp(a, "--no-wlist") || !strcmp(a, "--clear-wlist")) {
       no_default_whitelist = true;
     } else if (!strcmp(a, "--ignore-errors")) {
@@ -383,7 +391,7 @@ class Path_Cache {
 string Path_Cache::resolve(const unordered_map<string, string> &h,
     const string &filename)
 {
-  auto fn = boost::to_lower_copy(filename);
+  auto fn = to_lower_copy(filename);
   auto i = h.find(fn);
   if (i == h.end())
     throw range_error("Could not resolve: " + filename);
@@ -397,10 +405,9 @@ string Path_Cache::resolve(const deque<string> &search_path,
       auto i = m_.find(path);
       if (i == m_.end()) {
         unordered_map<string, string> xs;
-        for (auto &e : boost::make_iterator_range(
-              boost::filesystem::directory_iterator(path), {})) {
+        for (auto &e : std::filesystem::directory_iterator(path)) {
           auto fn = e.path().filename().generic_string();
-          xs[boost::to_lower_copy(fn)] = std::move(fn);
+          xs[to_lower_copy(fn)] = std::move(fn);
         }
         auto r = m_.insert(make_pair(path, std::move(xs)));
         return path + "/" + resolve(r.first->second, filename);
@@ -437,7 +444,7 @@ Traverser::Traverser(const Arguments &args)
 void Traverser::prepare_stack()
 {
   for (auto &a : args.files) {
-    auto p = make_pair(boost::filesystem::path(a).filename().generic_string(), a);
+    auto p = make_pair(std::filesystem::path(a).filename().generic_string(), a);
     if (!known_files.count(p.first)) {
       if (args.include_main)
         result_set.insert(p.second);
@@ -467,7 +474,7 @@ void Traverser::process_stack()
             args.mingw64_32_search_path.end());
     }
     for (auto &n : ns) {
-      if (args.whitelist.count(boost::algorithm::to_lower_copy(n)))
+      if (args.whitelist.count(to_lower_copy(n)))
         continue;
       if (args.resolve) {
         try {
