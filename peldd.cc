@@ -1,8 +1,8 @@
 // The code in this file is licensed under the MIT License (MIT).
 
 
-#include <parser-library/parse.h>
-#include <parser-library/nt-headers.h>
+#include <pe-parse/parse.h>
+#include <pe-parse/nt-headers.h>
 
 #include <iostream>
 #include <array>
@@ -48,13 +48,13 @@ struct section {
 };
 
 struct parsed_pe_internal {
-  list<section>   secs;
+  vector<section>   secs;
 };
 
-#define READ_DWORD_NULL(b, o, inst, member)                                     \
-  if (!readDword(b, o + _offset(__typeof__(inst), member), inst.member)) { \
-    PE_ERR(PEERR_READ);                                                    \
-    return nullptr;                                                          \
+#define READ_DWORD_NULL(b, o, inst, member)                                 \
+  if (!readDword(b, o + offsetof(__typeof__(inst), member), inst.member)) { \
+    PE_ERR(PEERR_READ);                                                     \
+    return nullptr;                                                         \
   }
 
 
@@ -63,8 +63,8 @@ extern bool getHeader(bounded_buffer *file, pe_header &p, bounded_buffer *&rem);
 extern bool getSections( bounded_buffer  *b, 
                   bounded_buffer  *fileBegin,
                   nt_header_32    &nthdr, 
-                  list<section>   &secs);
-extern bool getSecForVA(list<section> &secs, VA v, section &sec);
+                  vector<section>   &secs);
+extern bool getSecForVA(const vector<section> &secs, VA v, section &sec);
 }
 
 // most of the following function body is copied from ParsePEFromFile()
